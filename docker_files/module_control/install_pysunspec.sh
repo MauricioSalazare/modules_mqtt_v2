@@ -1,6 +1,6 @@
 #!/bin/bash
 
-pip3 install pyserial
+# pip3 install pyserial
 
 apt update
 apt install -y git
