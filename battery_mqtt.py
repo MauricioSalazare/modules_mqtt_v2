@@ -36,6 +36,7 @@ class BatteryModule:
         self.emergency_solutions = None
 
         if self.enable_sma:
+            # Get all the battery parameters from the first time.
             assert (modbus_ip is not None) and (modbus_port is not None),  "Provide a valid ip/port for the inverter."
 
             self.sma_battery = SMABattery(modbus_ip=modbus_ip, modbus_port=modbus_port)
@@ -45,7 +46,8 @@ class BatteryModule:
 
             # Update internal state with the values from the battery
             self.power_output = actual_battery_status["inverter"]["W"] / 1000.0  # Read power output. (Must be 0)
-            self.battery_params[BatteryParameters.SOC_INI_ACTUAL] = (actual_battery_status["storage"]["ChaState"] / 100) * self.battery_params[BatteryParameters.NOMINAL_ENERGY]
+            # self.battery_params[BatteryParameters.SOC_INI_ACTUAL] = (actual_battery_status["storage"]["ChaState"] / 100) * self.battery_params[BatteryParameters.NOMINAL_ENERGY]
+            self.battery_params[BatteryParameters.SOC_INI_ACTUAL] = (actual_battery_status["storage"]["ChaState"] / 100)
             self.battery_params[BatteryParameters.MAX_POWER_DISCHARGE] = -self.sma_battery.MAX_DISCHARGE_VALUE
             self.battery_params[BatteryParameters.MAX_POWER_CHARGE] = self.sma_battery.MAX_CHARGE_VALUE
 
@@ -56,9 +58,13 @@ class BatteryModule:
             # TODO: Create a thread inside SMABattery class, so it keeps an updated version of the SMA values in a dictionary
             actual_battery_status = self.sma_battery.readSMAValues()
             self.power_output = actual_battery_status["inverter"]["W"] / 1000.0
-            self.battery_params[BatteryParameters.SOC_INI_ACTUAL] = (actual_battery_status["storage"]["ChaState"] / 100) * self.battery_params[BatteryParameters.NOMINAL_ENERGY]
+            # self.battery_params[BatteryParameters.SOC_INI_ACTUAL] = (actual_battery_status["storage"]["ChaState"] / 100) * self.battery_params[BatteryParameters.NOMINAL_ENERGY]
+            self.battery_params[BatteryParameters.SOC_INI_ACTUAL] = (actual_battery_status["storage"]["ChaState"] / 100)
             self.battery_params[BatteryParameters.MAX_POWER_DISCHARGE] = -self.sma_battery.MAX_DISCHARGE_VALUE
             self.battery_params[BatteryParameters.MAX_POWER_CHARGE] = self.sma_battery.MAX_CHARGE_VALUE
+
+            print(f"Current SoC from SMA: {self.battery_params[BatteryParameters.SOC_INI_ACTUAL]}")
+            print(f"Current POWER OUTPUT from SMA: {self.power_output}  [kW]")
 
         return self.battery_params
 
@@ -237,7 +243,7 @@ if __name__ == '__main__':
                         help="Client id for the mosquitto server")
     parser.add_argument('-B', '--batteryid', required=False, type=int, default=1,
                         help="Battery id (use integers). e.g., 1, 2, 3, etc.")
-    parser.add_argument('--mode', required=False, type=int, default=1, choices={0, 1},
+    parser.add_argument('--mode', required=False, type=int, default=0, choices={0, 1},
                         help="0: Enables simulation mode, 1: Use an actual battery to control.")
     parser.add_argument('--ipmodbus', required=False, type=str, default="192.168.105.20",
                         help="IP address of the battery inverter.")
