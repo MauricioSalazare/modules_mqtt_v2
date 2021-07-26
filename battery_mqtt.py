@@ -237,7 +237,7 @@ if __name__ == '__main__':
                         help="Client id for the mosquitto server")
     parser.add_argument('-B', '--batteryid', required=False, type=int, default=1,
                         help="Battery id (use integers). e.g., 1, 2, 3, etc.")
-    parser.add_argument('--mode', required=False, type=int, default=0, choices={0, 1},
+    parser.add_argument('--mode', required=False, type=int, default=1, choices={0, 1},
                         help="0: Enables simulation mode, 1: Use an actual battery to control.")
     parser.add_argument('--ipmodbus', required=False, type=str, default="192.168.105.20",
                         help="IP address of the battery inverter.")

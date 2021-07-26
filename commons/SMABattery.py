@@ -55,7 +55,7 @@ class SMABattery:
     def __init__(self, modbus_ip=MODBUS_IP, modbus_port=MODBUS_PORT):
         self.MODBUS_IP = modbus_ip
         self.MODBUS_PORT = modbus_port
-        assert self.connect()
+        assert self.connect(),  "Not connected to the inverter. Check IP/Port addresses."
 
         threading.Thread(target=self.send_scheduled, daemon=True).start()
 
