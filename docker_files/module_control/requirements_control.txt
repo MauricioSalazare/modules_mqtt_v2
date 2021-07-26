@@ -4,5 +4,3 @@ pandas==1.1.4
 paho-mqtt==1.5.1
 matplotlib==3.3.2
 pyomo==5.7.1
-pymodbus==2.5.1
-pyserial

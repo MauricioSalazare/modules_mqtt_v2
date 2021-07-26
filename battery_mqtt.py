@@ -5,7 +5,7 @@ import time
 from commons.parameters import BatteryParameters, ControlParameters, Topics, bcolors
 from commons.SMABattery import SMABattery
 import argparse
-
+import schedule
 
 """
 Mapping of the variables names between BatteryModule and SMAModule:
@@ -52,6 +52,7 @@ class BatteryModule:
 
     def get_battery_parameters(self):
         if self.enable_sma:
+            # Update the battery parameters with data from the SMA inverter.
             # TODO: Create a thread inside SMABattery class, so it keeps an updated version of the SMA values in a dictionary
             actual_battery_status = self.sma_battery.readSMAValues()
             self.power_output = actual_battery_status["inverter"]["W"] / 1000.0
@@ -204,22 +205,26 @@ class BatteryMQTT(BatteryModule, mqtt.Client):
     def process_mqtt_messages(self):
         self.loop()
 
-    def simulate_heart_beat(self, delta_t_sim):
-        self.simulate_battery_operation(delta_t_sim=delta_t_sim)  # Charge/Discharge the battery
-        battery_parameters_dict = self.get_battery_parameters()
-        message_dict = json.dumps(battery_parameters_dict)
-        self.publish_response(topic=self.topics.battery_settings_topic,
-                              payload=message_dict)
+    # def simulate_heart_beat(self, delta_t_sim):
+    #     self.simulate_battery_operation(delta_t_sim=delta_t_sim)  # Charge/Discharge the battery
+    #     battery_parameters_dict = self.get_battery_parameters()
+    #     message_dict = json.dumps(battery_parameters_dict)
+    #     self.publish_response(topic=self.topics.battery_settings_topic,
+    #                           payload=message_dict)
 
     def report_battery_status(self, delta_t_sim=1):
         """Reads the current battery status and report to the mosquitto broker"""
         if not self.enable_sma:
-            self.simulate_battery_operation(delta_t_sim=delta_t_sim)  # Charge/Discharge the battery
+            self.simulate_battery_operation(delta_t_sim=delta_t_sim)  # Charge/Discharge the battery in simulation mode
 
         battery_parameters_dict = self.get_battery_parameters()
         message_dict = json.dumps(battery_parameters_dict)
         self.publish_response(topic=self.topics.battery_settings_topic,
                               payload=message_dict)
+
+
+def scheduler_job(battery_instance):
+    battery_instance.report_battery_status()
 
 
 if __name__ == '__main__':
@@ -232,12 +237,14 @@ if __name__ == '__main__':
                         help="Client id for the mosquitto server")
     parser.add_argument('-B', '--batteryid', required=False, type=int, default=1,
                         help="Battery id (use integers). e.g., 1, 2, 3, etc.")
-    parser.add_argument('--enablesma', required=False, type=bool, default=False,
-                        help="False: Enables simulation mode, True: Use an actual battery to control.")
+    parser.add_argument('--mode', required=False, type=int, default=0, choices={0, 1},
+                        help="0: Enables simulation mode, 1: Use an actual battery to control.")
     parser.add_argument('--ipmodbus', required=False, type=str, default="192.168.105.20",
                         help="IP address of the battery inverter.")
     parser.add_argument('--portmodbus', required=False, type=int, default=502,
                         help="Modbus port of the battery inverter.")
+    parser.add_argument('--delay', required=False, type=float, default=0.2499,
+                        help="Delay time between simulation/forecast update.")
 
     args, unknown = parser.parse_known_args()
 
@@ -245,23 +252,24 @@ if __name__ == '__main__':
     print(f"Port: {args.port}")
     print(f"Client id: {args.clientid}")
     print(f"Battery id: {args.batteryid}")
+    print(f"Enable inverter: {args.mode}")
+    print(f"Simulation every: {args.delay}")
+
+    if not args.mode:
+        print("Simulation mode!!")
+    else:
+        print("SMA enabled. Controlling in real life!!")
 
     battery = BatteryMQTT(battery_id=args.batteryid,
                           client_id_mqtt=args.clientid,
                           mqtt_server_ip=args.host,
                           mqtt_server_port=args.port,
-                          enable_sma=args.enablesma,
+                          enable_sma=args.mode,
                           modbus_ip=args.ipmodbus,
                           modbus_port=args.portmodbus)
 
+    schedule.every(args.delay).seconds.do(scheduler_job, battery_instance=battery)
+
     while True:
         battery.process_mqtt_messages()
-        if not args.enablesma:
-            print("Simulation mode!!")
-            battery.report_battery_status(delta_t_sim=1)  # Discharge/Charge the battery and report
-            time.sleep(0.2499)  # The forecast is set to run at 0.25 sec
-        else:
-            print("Controlling in real life!!")
-            battery.report_battery_status()  # Reads battery status through SMA controller and report via MQTT.
-            time.sleep(5.0)  # Sleep so I don't ask the battery status every nanosecond blocking the battery.
-
+        schedule.run_pending()

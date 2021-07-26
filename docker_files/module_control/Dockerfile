@@ -55,10 +55,7 @@ COPY /commons/influxDB_to_icarus.py ./commons/
 COPY /commons/parameters.py ./commons/
 COPY control_mqtt.py .
 
-COPY /docker_files/module_control/install_pysunspec.sh .
-
 RUN pip install --no-cache-dir -r requirements_control.txt
-RUN source install_pysunspec.sh
 
 EXPOSE 1883
 
