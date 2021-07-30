@@ -2,6 +2,7 @@ import paho.mqtt.client as mqtt
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import json
 from commons.parameters import BatteryParameters, ControlParameters, Topics, bcolors
 from commons.timescaledb_connection import TimescaledbConnection
 import argparse
@@ -13,7 +14,6 @@ class DBManager:
         self.real_power = pd.DataFrame([])
         self.predicted_power = pd.DataFrame([])
         self.continue_simulation = True
-
 
     def melt_dataframe(self, message_frame):
         """Return a dataframe with the PostgreSQL table format."""
@@ -36,6 +36,7 @@ class DBManagerMQTT(DBManager, mqtt.Client, TimescaledbConnection):
 
     def __init__(self,
                  control_id,
+                 battery_id,
                  controlled_sensor_id,
                  controlled_phase_id,
                  user_id_mqtt,
@@ -48,7 +49,12 @@ class DBManagerMQTT(DBManager, mqtt.Client, TimescaledbConnection):
                  clear_table_db=True):
         DBManager.__init__(self)
         mqtt.Client.__init__(self, client_id=user_id_mqtt)
-        TimescaledbConnection.__init__(self, username=username_db, password=password_db, host=ip_db, port=port_db, clear_table=clear_table_db)
+        TimescaledbConnection.__init__(self, username=username_db, password=password_db, host=ip_db, port=port_db)
+        self.db_table_name_control = f"operation_log_control_{control_id}"
+        self.db_table_name_battery = f"operation_log_battery_{battery_id}"
+
+        self.create_table(table_name=self.db_table_name_control, clear_table=clear_table_db)
+        self.create_table(table_name=self.db_table_name_battery, clear_table=clear_table_db)
 
         self.last_message_controller = []
         self.last_message_forecast = []
@@ -59,6 +65,7 @@ class DBManagerMQTT(DBManager, mqtt.Client, TimescaledbConnection):
         self.topics.controller_results += f"control_{control_id}"
         self.topics.forecast_topic += f"{controlled_sensor_id}_" + f"{controlled_phase_id}"
         self.topics.sensor_topic += f"{controlled_sensor_id}_" + f"{controlled_phase_id}"
+        self.topics.battery_settings_topic += f"battery_{battery_id}"
 
         # Connect to the MQTT Mosquitto
         self.qos = 1
@@ -81,6 +88,9 @@ class DBManagerMQTT(DBManager, mqtt.Client, TimescaledbConnection):
         print(f"Subscribing to: {self.topics.forecast_stop_simulation}")
         self.subscribe(self.topics.forecast_stop_simulation, self.qos)
 
+        print(f"Subscribing to: {self.topics.battery_settings_topic}")
+        self.subscribe(self.topics.battery_settings_topic, self.qos)
+
     def on_message(self, client, userdata, msg):
         print("--" * 100)
         print(bcolors.OKGREEN + f"Message received on topic: {msg.topic}" + bcolors.ENDC)
@@ -94,7 +104,7 @@ class DBManagerMQTT(DBManager, mqtt.Client, TimescaledbConnection):
 
             # Save message on database:
             df_output = self.melt_dataframe(received_message_frame.iloc[[0], :])
-            self.insert_data(df_output)
+            self.insert_data(df_output, table_name=self.db_table_name_control)
 
             # Save message locally:
             self.solutions = pd.concat([self.solutions, received_message_frame.iloc[[0], :]])
@@ -117,10 +127,25 @@ class DBManagerMQTT(DBManager, mqtt.Client, TimescaledbConnection):
 
             # Save message on database:
             df_output = self.melt_dataframe(received_message_frame.iloc[[0], :])
-            self.insert_data(df_output)
+            self.insert_data(df_output, table_name=self.db_table_name_control)
 
             # Save message locally:
             self.real_power = pd.concat([self.real_power, received_message_frame.iloc[[0], :]])
+
+
+        elif msg.topic == self.topics.battery_settings_topic:  # Received new battery settings DO NOT SOLVE ANYTHING
+            print(bcolors.WARNING + "Receiving battery settings" + bcolors.ENDC)
+            received_message = msg.payload.decode('utf-8')
+            received_message_dict = json.loads(received_message)
+
+            received_message_frame = pd.DataFrame.from_dict(received_message_dict, orient='index').transpose()
+            received_message_frame = received_message_frame.set_index(ControlParameters.DATE_STAMP_OPTIMAL, drop=True)
+            df_output = user_module_mqtt.melt_dataframe(received_message_frame)
+
+            self.insert_data(df_output, table_name=self.db_table_name_battery)
+
+
+
 
         elif msg.topic == self.topics.forecast_stop_simulation:
             print("---" * 200)
@@ -158,6 +183,7 @@ if __name__ == '__main__':
     args, unknown = parser.parse_known_args()
 
     user_module_mqtt = DBManagerMQTT(control_id=1,
+                                     battery_id=1,
                                      controlled_sensor_id=args.sensorid,
                                      controlled_phase_id=args.phaseid,
                                      user_id_mqtt=args.clientid,

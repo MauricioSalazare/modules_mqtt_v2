@@ -7,6 +7,7 @@ class BatteryParameters:
     SOC_MAX = 'soc_max'
     EFFICIENCY = 'efficiency'
     SOC_INI_ACTUAL = 'soc_ini'
+    POWER_OUTPUT = 'pb_actual_power'
     VALID_KEYS = [NOMINAL_ENERGY,
                   MAX_POWER_DISCHARGE,
                   MAX_POWER_CHARGE,
@@ -14,7 +15,8 @@ class BatteryParameters:
                   SOC_MIN,
                   SOC_MAX,
                   EFFICIENCY,
-                  SOC_INI_ACTUAL]
+                  SOC_INI_ACTUAL,
+                  POWER_OUTPUT]
 
 
 class ControlParameters:

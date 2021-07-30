@@ -14,19 +14,19 @@ __version__ = "1.0.0"
 __author__ = "Mauricio Salazar"
 
 class TimescaledbConnection:
-    def __init__(self, username, password, host='localhost', port=5432, clear_table=False):
+    def __init__(self, username, password, host='localhost', port=5432):
         self.username = username
         self.password = password
         self.host = host
         self.port = port
-        self.clear_table = clear_table
+        # self.clear_table = clear_table
         self.db_name = None
-        self.table_name = None
+        # self.table_name = None
 
         assert self.check_connection(), "Check connection to the database. Is timescaledb/docker running?"
 
-        self.create_db()
-        self.create_table()
+        self.create_db(db_name="test_python_db")
+        # self.create_table(table_name="operation_log", clear_table=clear_table)
 
     def check_connection(self, db_name="postgres"):
         conn = None
@@ -76,15 +76,15 @@ class TimescaledbConnection:
                 print('Database connection closed.')
         cur.close()
 
-    def create_table(self, table_name="operation_log"):
+    def create_table(self, table_name, clear_table=False):
         assert self.db_name is not None, "Create a database first"
-        self.table_name = table_name
+        # self.table_name = table_name
         conn = None
         try:
             conn = ps.connect(host=self.host, port=self.port, user=self.username, password=self.password, dbname=self.db_name)
             cur = conn.cursor()
 
-            if self.clear_table:
+            if clear_table:
                 cur.execute(f"""DROP TABLE IF EXISTS {table_name};""")
                 print("Table cleared.")
 
@@ -105,9 +105,9 @@ class TimescaledbConnection:
                 print('Database connection closed.')
         cur.close()
 
-    def insert_data(self, df_output):
+    def insert_data(self, df_output, table_name):
         assert self.db_name is not None, "Create a database first"
-        assert self.table_name is not None, "Create a table first"
+        # assert self.table_name is not None, "Create a table first"
 
         conn = None
         try:
@@ -115,7 +115,7 @@ class TimescaledbConnection:
             cur = conn.cursor()
             # data = [('2020-11-11 14:15:00+00:00','forecast',6.952342)]
             data = list(df_output.itertuples(index=False, name=None))
-            insert_query = f"""insert into {self.table_name} (time_control, channel, values_channel) values %s"""
+            insert_query = f"""insert into {table_name} (time_control, channel, values_channel) values %s"""
             extras.execute_values(cur, insert_query, data, template=None, page_size=100)
             conn.commit()
         except (Exception, ps.DatabaseError) as error:
@@ -150,8 +150,19 @@ if __name__ == "__main__":
     df_output['datetimeFC'] = df_output['datetimeFC'].astype(str)
     # df_output = df_output.round(2)
 
+    df2 = pd.read_csv("..\simulation_battery_log.csv", parse_dates=['datetimeFC']).set_index(['datetimeFC'], drop=True)
+    # df = df.iloc[[0], :]  # Test with one entry
+    df_new2 = df2.reset_index()
+    df_output2 = pd.melt(df_new2, id_vars="datetimeFC", value_vars=df_new2.drop('datetimeFC', axis=1), var_name="channel", value_name="values_channel")
+    df_output2['datetimeFC'] = df_output2['datetimeFC'].astype(str)
+    # df_output = df_output.round(2)
+
     username_db = "postgres"
     password_db = "postgres"
 
     db = TimescaledbConnection(username=username_db, password=password_db)
-    db.insert_data(df_output)
+    db.create_table(table_name="operation_log")
+    db.create_table(table_name="operation_log_battery_1")
+
+    db.insert_data(df_output, table_name="operation_log")
+    db.insert_data(df_output2, table_name="operation_log_battery_1")

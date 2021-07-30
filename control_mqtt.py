@@ -18,14 +18,15 @@ class ControlModule:
          This dictionary will be updated by the battery module constantly.
          The following parameters are the minimum required to do the optimization. Therefore, this is a "copy" of the
          parameters that are in the battery module"""
-        self.battery_params = {BatteryParameters.NOMINAL_ENERGY: 30,
+        self.battery_params = {BatteryParameters.NOMINAL_ENERGY: 16,
                                BatteryParameters.MAX_POWER_DISCHARGE: 6,
                                BatteryParameters.MAX_POWER_CHARGE: 6,
                                BatteryParameters.DELTA_T: 0.25,
                                BatteryParameters.SOC_MIN: 0.2,
                                BatteryParameters.SOC_MAX: 1.0,
                                BatteryParameters.EFFICIENCY: 1.0,
-                               BatteryParameters.SOC_INI_ACTUAL: 0.8}
+                               BatteryParameters.SOC_INI_ACTUAL: 0.8,
+                               BatteryParameters.POWER_OUTPUT: 0.0}
 
         # Default controller settings: (This data should come from the user module)
         self.controller_params = {ControlParameters.POWER_THRESHOLD: 5, # kW
@@ -300,6 +301,10 @@ class ControlMQTT(ControlModule, mqtt.Client):
             print(bcolors.WARNING + "Receiving battery settings" + bcolors.ENDC)
             received_message = msg.payload.decode('utf-8')
             received_message_dict = json.loads(received_message)
+
+            # Remove the timestamp of the parameters (Not used for this update but used for the Database manager module)
+            received_message_dict.pop(ControlParameters.DATE_STAMP_OPTIMAL)
+
             self.update_battery_parameters(**received_message_dict)
 
             if not self.battery_on_line:  # Battery send updates for the first time
@@ -370,5 +375,5 @@ if __name__ == '__main__':
                                         client_id_mqtt=args.clientid,
                                         mqtt_server_ip=args.host,
                                         mqtt_server_port=args.port)
-    # while True:
-    #     power_controller_mqtt.process_mqtt_messages()
+    while True:
+        power_controller_mqtt.process_mqtt_messages()
