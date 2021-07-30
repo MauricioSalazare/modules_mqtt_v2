@@ -18,16 +18,19 @@ forecast_consumption = list()
 
 
 for simulation_time_step in range(len(icarus.join_time_series.index)-100):
+    if simulation_time_step == 2:
+        break
+
     print("-" * 80)
     print(f"Simulation step: {simulation_time_step}" )
     print("-" * 80)
     print('*' * 200)
 
     if PERFECT_PREDICTION:
-        (real_, prediction_) = icarus.get_prediction(simulation_time_step, 100)
+        (real_, prediction_) = icarus.get_prediction_for_simulation(simulation_time_step, 100)
         forecast_ = real_
     else:
-        (real_, prediction_) = icarus.get_prediction(simulation_time_step, 100)
+        (real_, prediction_) = icarus.get_prediction_for_simulation(simulation_time_step, 100)
         forecast_ = prediction_
 
 

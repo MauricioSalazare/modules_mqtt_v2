@@ -15,7 +15,7 @@ class ControlModule:
 
     def __init__(self):
         """ Default battery settings that will be used for the optimizer (This avoids the optimizer to crash)
-         This dictionary will be updated by the battery module if it's necessary.
+         This dictionary will be updated by the battery module constantly.
          The following parameters are the minimum required to do the optimization. Therefore, this is a "copy" of the
          parameters that are in the battery module"""
         self.battery_params = {BatteryParameters.NOMINAL_ENERGY: 30,
@@ -28,7 +28,7 @@ class ControlModule:
                                BatteryParameters.SOC_INI_ACTUAL: 0.8}
 
         # Default controller settings: (This data should come from the user module)
-        self.controller_params = {ControlParameters.POWER_THRESHOLD: 6, # kW
+        self.controller_params = {ControlParameters.POWER_THRESHOLD: 5, # kW
                                   ControlParameters.OPTIMIZER_WINDOW: 96}
 
         self.power_threshold = 6.5  # Maximum power allowed in the phase
@@ -282,13 +282,14 @@ class ControlMQTT(ControlModule, mqtt.Client):
             self.update_forecast(received_message_frame)
             results_optimizer = self.solve_model()
             message = results_optimizer.to_json(date_format='iso')
-            self.publish_response(topic=self.topics.controller_results, payload=message)
+            self.publish_response(topic=self.topics.controller_results, payload=message)  # For the DB Manager module
 
             if self.battery_on_line:
                 print("Sending the new battery output power...")
                 message = results_optimizer[[ControlParameters.DATE_STAMP_OPTIMAL,
                                              ControlParameters.BATTERY_POWER_OPTIMAL]].to_json(date_format='iso',
                                                                                                orient='records')
+                # For the battery module
                 self.publish_response(topic=self.topics.controller_set_battery_power_topic, payload=message)
             else:
                 print("Battery is off-line... THE OUTPUT POWER WAS NOT SET")
@@ -369,5 +370,5 @@ if __name__ == '__main__':
                                         client_id_mqtt=args.clientid,
                                         mqtt_server_ip=args.host,
                                         mqtt_server_port=args.port)
-    while True:
-        power_controller_mqtt.process_mqtt_messages()
+    # while True:
+    #     power_controller_mqtt.process_mqtt_messages()

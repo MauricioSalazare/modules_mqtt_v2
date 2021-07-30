@@ -1,35 +1,38 @@
 import paho.mqtt.client as mqtt
-from pyomo.environ import *
 import pandas as pd
-import json
-import time
-import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from commons.parameters import BatteryParameters, ControlParameters, Topics, bcolors
+from commons.timescaledb_connection import TimescaledbConnection
+import argparse
 
-class UserModule:
 
+class DBManager:
     def __init__(self):
-        self.battery_params = {BatteryParameters.NOMINAL_ENERGY: 30,
-                               BatteryParameters.MAX_POWER_DISCHARGE: 6,
-                               BatteryParameters.MAX_POWER_CHARGE: 6,
-                               BatteryParameters.DELTA_T: 0.25,
-                               BatteryParameters.SOC_MIN: 0.2,
-                               BatteryParameters.SOC_MAX: 1.0,
-                               BatteryParameters.EFFICIENCY: 1.0,
-                               BatteryParameters.SOC_INI_ACTUAL: 0.8}
-        # Default controller settings: (This data should come from the user module)
-        self.controller_params = {ControlParameters.POWER_THRESHOLD: 6,
-                                  ControlParameters.OPTIMIZER_WINDOW: 96}
-
         self.solutions = pd.DataFrame([])
         self.real_power = pd.DataFrame([])
         self.predicted_power = pd.DataFrame([])
         self.continue_simulation = True
 
 
-class UserMQTT(UserModule, mqtt.Client):
+    def melt_dataframe(self, message_frame):
+        """Return a dataframe with the PostgreSQL table format."""
+
+        ## Optional way to melt the dataframe.
+        # df_new = df.reset_index()
+        # df_new = pd.melt(df_new, id_vars="datetimeFC", value_vars=df_new.drop('datetimeFC', axis=1), var_name="channel", value_name="values_channel")
+
+        df_output = message_frame.stack(0).reset_index().rename(columns={"level_1": "channel", 0: "value"})
+        df_output['channel'] = pd.Categorical(df_output['channel'].tolist(), ordered=True,
+                                              categories=df_output['channel'].unique().tolist())
+        df_output = df_output.sort_values(['channel', 'datetimeFC']).reset_index(drop=True)
+        df_output['datetimeFC'] = df_output['datetimeFC'].astype(str)
+        df_output = df_output.round(2)
+
+        return df_output
+
+
+class DBManagerMQTT(DBManager, mqtt.Client, TimescaledbConnection):
 
     def __init__(self,
                  control_id,
@@ -37,9 +40,19 @@ class UserMQTT(UserModule, mqtt.Client):
                  controlled_phase_id,
                  user_id_mqtt,
                  mqtt_server_ip,
-                 mqtt_server_port):
-        UserModule.__init__(self)
+                 mqtt_server_port,
+                 username_db,
+                 password_db,
+                 port_db=5432,
+                 ip_db='localhost',
+                 clear_table_db=True):
+        DBManager.__init__(self)
         mqtt.Client.__init__(self, client_id=user_id_mqtt)
+        TimescaledbConnection.__init__(self, username=username_db, password=password_db, host=ip_db, port=port_db, clear_table=clear_table_db)
+
+        self.last_message_controller = []
+        self.last_message_forecast = []
+        self.last_message_sensor = []
 
         self.topics = Topics
         # Subscribe
@@ -77,13 +90,22 @@ class UserMQTT(UserModule, mqtt.Client):
             received_message_frame = pd.read_json(received_message,
                                                   convert_dates=[ControlParameters.DATE_STAMP_OPTIMAL])
             received_message_frame = received_message_frame.set_index(ControlParameters.DATE_STAMP_OPTIMAL, drop=True)
+            # self.last_message_controller.append(received_message_frame)
+
+            # Save message on database:
+            df_output = self.melt_dataframe(received_message_frame.iloc[[0], :])
+            self.insert_data(df_output)
+
+            # Save message locally:
             self.solutions = pd.concat([self.solutions, received_message_frame.iloc[[0], :]])
 
-        elif msg.topic == self.topics.forecast_topic:
+
+        elif msg.topic == self.topics.forecast_topic:  # This data is also in controller_results
             received_message = msg.payload.decode('utf-8')
             received_message_frame = pd.read_json(received_message,
                                                   convert_dates=[ControlParameters.DATE_STAMP_OPTIMAL])
             received_message_frame = received_message_frame.set_index(ControlParameters.DATE_STAMP_OPTIMAL, drop=True)
+            # self.last_message_forecast.append(received_message_frame)
             self.predicted_power = pd.concat([self.predicted_power, received_message_frame.iloc[[0], :]])
 
         elif msg.topic == self.topics.sensor_topic:
@@ -91,6 +113,13 @@ class UserMQTT(UserModule, mqtt.Client):
             received_message_frame = pd.read_json(received_message,
                                                   convert_dates=[ControlParameters.DATE_STAMP_OPTIMAL])
             received_message_frame = received_message_frame.set_index(ControlParameters.DATE_STAMP_OPTIMAL, drop=True)
+            self.last_message_sensor.append(received_message_frame)
+
+            # Save message on database:
+            df_output = self.melt_dataframe(received_message_frame.iloc[[0], :])
+            self.insert_data(df_output)
+
+            # Save message locally:
             self.real_power = pd.concat([self.real_power, received_message_frame.iloc[[0], :]])
 
         elif msg.topic == self.topics.forecast_stop_simulation:
@@ -107,14 +136,37 @@ class UserMQTT(UserModule, mqtt.Client):
 
 
 if __name__ == '__main__':
-    mosquitto_server_ip = "localhost"
-    mosquitto_server_port = 1883
-    user_module_mqtt = UserMQTT(control_id=1,
-                                controlled_sensor_id='gebouw',
-                                controlled_phase_id='l1',
-                                user_id_mqtt="USER",
-                                mqtt_server_ip=mosquitto_server_ip,
-                                mqtt_server_port=mosquitto_server_port)
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument('-H', '--host', required=False, type=str, default='localhost')
+    parser.add_argument('-P', '--port', required=False, type=int, default=1883,
+                        help='8883 for TLS or 1883 for non-TLS')
+    parser.add_argument('-c', '--clientid', required=False, default="DBMANAGER",
+                        help="Client id for the mosquitto server")
+    parser.add_argument('-S', '--sensorid', required=False, default='gebouw',
+                        help="Name of the sensor measurement")
+    parser.add_argument('-L', '--phaseid', required=False, default='l1',
+                        help="Phase of the sensor measurement e.g., 'l1', 'l2' or 'l3'")
+    parser.add_argument('--dbip', required=False, type=str, default='localhost',
+                        help="Username for PostrgreSQL database")
+    parser.add_argument('--dbport', required=False, type=int, default=5432,
+                        help="Username for PostrgreSQL database")
+    parser.add_argument('--dbusername', required=False, type=str, default='postgres',
+                        help="Username for PostrgreSQL database")
+    parser.add_argument('--dbpassword', required=False, type=str, default='postgres',
+                        help="Password for PostrgreSQL database")
+    args, unknown = parser.parse_known_args()
+
+    user_module_mqtt = DBManagerMQTT(control_id=1,
+                                     controlled_sensor_id=args.sensorid,
+                                     controlled_phase_id=args.phaseid,
+                                     user_id_mqtt=args.clientid,
+                                     mqtt_server_ip=args.host,
+                                     mqtt_server_port=args.port,
+                                     username_db=args.dbusername,
+                                     password_db=args.dbpassword,
+                                     port_db=args.dbport,
+                                     ip_db=args.dbip)
 
     # while True:
     continue_simulation = True
@@ -126,8 +178,9 @@ if __name__ == '__main__':
 #%% Plotting the simulations
     solutions_frame = user_module_mqtt.solutions
 
-    real_power = user_module_mqtt.real_power.values.ravel()
-    predicted_power = user_module_mqtt.predicted_power.values.ravel()
+    real_power = user_module_mqtt.real_power.values.ravel()  # Actual power measured by influxDB
+    predicted_power = user_module_mqtt.predicted_power.values.ravel()  # Power from icarus
+
     predicted_power_control = solutions_frame[ControlParameters.FORECAST_VALUES].values
     power_threshold_phase = solutions_frame[ControlParameters.POWER_THRESHOLD].values
 
@@ -192,8 +245,10 @@ if __name__ == '__main__':
     ax3.xaxis.set_minor_formatter(mdates.DateFormatter('%H'))
     ax3.tick_params(which='minor', length=4, labelsize=6)
     ax3.set_ylabel('[p.u]')
+    plt.show()
 
-
+    plt.savefig('simulation_figure.png')
+    solutions_frame.to_csv("simulation_data.csv")
 
 
 

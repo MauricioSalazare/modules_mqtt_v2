@@ -91,16 +91,17 @@ class BatteryModule:
             if self.enable_sma:
                 self.sma_battery.changePower(new_power_output * 1000)  # Power in Watts to the inverter of the battery
                 print(f"Power output updated on the inverter: {new_power_output} [kW]")
-                self.power_output = new_power_output
             else:
                 print(f"Power output updated: {new_power_output} [kW]")
-                self.power_output = new_power_output
+
+            self.power_output = new_power_output
         else:
             print('New power output outside battery limits. OUTPUT POWER WAS NOT UPDATED!!!')
 
     def simulate_battery_operation(self, delta_t_sim=1):
         """
         This will simulate the battery charge or discharge
+        delta_t_sim is used in the stand alone simulation.
         """
         assert self.enable_sma is not True,  "Inverter mode is selected. Can not simulate"
 
@@ -171,7 +172,7 @@ class BatteryMQTT(BatteryModule, mqtt.Client):
             print(bcolors.OKGREEN + "Receiving power set point" + bcolors.ENDC)
             received_message = msg.payload.decode('utf-8')
 
-            if received_message:
+            if received_message:  # Set point of power from te controller has a time stamp
                 received_message_frame = pd.read_json(received_message,
                                                       convert_dates=[ControlParameters.DATE_STAMP_OPTIMAL])
                 received_message_frame = received_message_frame.set_index(ControlParameters.DATE_STAMP_OPTIMAL,
@@ -225,7 +226,7 @@ class BatteryMQTT(BatteryModule, mqtt.Client):
 
         battery_parameters_dict = self.get_battery_parameters()
         message_dict = json.dumps(battery_parameters_dict)
-        self.publish_response(topic=self.topics.battery_settings_topic,
+        self.publish_response(topic=self.topics.battery_settings_topic,  # Current battery settings to the controller (no time stamp/ no output power)
                               payload=message_dict)
 
 
@@ -245,6 +246,8 @@ if __name__ == '__main__':
                         help="Battery id (use integers). e.g., 1, 2, 3, etc.")
     parser.add_argument('--mode', required=False, type=int, default=0, choices={0, 1},
                         help="0: Enables simulation mode, 1: Use an actual battery to control.")
+    parser.add_argument('--enableinverter', required=False, default=False, action='store_true',
+                        help="False: Enables simulation mode (virtual battery), True: Real operation with modbus.")
     parser.add_argument('--ipmodbus', required=False, type=str, default="192.168.105.20",
                         help="IP address of the battery inverter.")
     parser.add_argument('--portmodbus', required=False, type=int, default=502,
@@ -258,24 +261,33 @@ if __name__ == '__main__':
     print(f"Port: {args.port}")
     print(f"Client id: {args.clientid}")
     print(f"Battery id: {args.batteryid}")
-    print(f"Enable inverter: {args.mode}")
+    print(f"Enable inverter: {args.enableinverter}")
     print(f"Simulation every: {args.delay}")
 
-    if not args.mode:
-        print("Simulation mode!!")
+
+    if args.enableinverter and args.mode == 0:
+        print(f"SMA enabled. BUT IN SIMULATION MODE! -- Sim delay: {args.delay} seconds")
+        delay = args.delay
+    elif args.enableinverter and args.mode == 1:
+        # Real operation of the battery.
+        delay = 10 # seconds.
+        print(f"SMA enabled. Controlling in real life!! -- Reporting battery status every: {delay} seconds.")
+    elif not args.enableinverter and args.mode == 0:
+        print(f"SMA disabled (Simulation mode). Controlling a VIRTUAL battery!! -- Sim delay: {args.delay} seconds")
+        delay = args.delay
     else:
-        print("SMA enabled. Controlling in real life!!")
+        raise ValueError("Can not disable inverter and control the real battery at the same time. Check input arguments.")
 
     battery = BatteryMQTT(battery_id=args.batteryid,
                           client_id_mqtt=args.clientid,
                           mqtt_server_ip=args.host,
                           mqtt_server_port=args.port,
-                          enable_sma=args.mode,
+                          enable_sma=args.enableinverter,
                           modbus_ip=args.ipmodbus,
                           modbus_port=args.portmodbus)
 
-    schedule.every(args.delay).seconds.do(scheduler_job, battery_instance=battery)
-
-    while True:
-        battery.process_mqtt_messages()
-        schedule.run_pending()
+    # schedule.every(delay).seconds.do(scheduler_job, battery_instance=battery)
+    #
+    # while True:
+    #     battery.process_mqtt_messages()
+    #     schedule.run_pending()

@@ -1,6 +1,5 @@
 numpy==1.19.2
 pandas==1.1.4
 paho-mqtt==1.5.1
-pymodbus==2.5.1
-schedule==1.1.0
-pyserial
+psycopg2==2.8.5
+matplotlib==3.3.2
