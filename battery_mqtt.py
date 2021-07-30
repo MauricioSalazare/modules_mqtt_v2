@@ -64,8 +64,8 @@ class BatteryModule:
             self.battery_params[BatteryParameters.POWER_OUTPUT] = actual_battery_status["inverter"]["W"] / 1000.0
             # self.battery_params[BatteryParameters.SOC_INI_ACTUAL] = (actual_battery_status["storage"]["ChaState"] / 100) * self.battery_params[BatteryParameters.NOMINAL_ENERGY]
             self.battery_params[BatteryParameters.SOC_INI_ACTUAL] = (actual_battery_status["storage"]["ChaState"] / 100)
-            self.battery_params[BatteryParameters.MAX_POWER_DISCHARGE] = -self.sma_battery.MAX_DISCHARGE_VALUE
-            self.battery_params[BatteryParameters.MAX_POWER_CHARGE] = self.sma_battery.MAX_CHARGE_VALUE
+            self.battery_params[BatteryParameters.MAX_POWER_DISCHARGE] = -self.sma_battery.MAX_DISCHARGE_VALUE / 1000.0
+            self.battery_params[BatteryParameters.MAX_POWER_CHARGE] = self.sma_battery.MAX_CHARGE_VALUE / 1000.0
 
             print(f"Current SoC from SMA: {self.battery_params[BatteryParameters.SOC_INI_ACTUAL]}")
             print(f"Current POWER OUTPUT from SMA: {self.power_output}  [kW]")
@@ -88,7 +88,7 @@ class BatteryModule:
 
         self.emergency_solutions = emergency_solutions
 
-    def set_power_output(self, new_power_output):
+    def set_power_output(self, new_power_output):  # Value in kW
         max_power_discharge = self.battery_params[BatteryParameters.MAX_POWER_DISCHARGE]
         max_power_charge = self.battery_params[BatteryParameters.MAX_POWER_CHARGE]
 
@@ -305,17 +305,17 @@ if __name__ == '__main__':
 
     if args.smatest:
         print("Setting the output power of the battery to 2000 [W] for 20 seconds...")
-        battery.set_power_output(2000.0)
+        battery.set_power_output(2.0)  # kW
         for ii in range(20):
             print(f"Second {ii + 1}/20...")
             time.sleep(1)
         print("Setting the output power of the battery to -2000 [W] for 20 seconds...")
-        battery.set_power_output(-2000.0)
+        battery.set_power_output(-2.0)  # kW
         for ii in range(20):
             print(f"Second {ii + 1}/20...")
             time.sleep(1)
         print("Turning off the battery during 10 seconds...")
-        battery.set_power_output(0.0)
+        battery.set_power_output(0.0)  #kW
         for ii in range(10):
             print(f"Second {ii + 1}/10...")
             time.sleep(1)
