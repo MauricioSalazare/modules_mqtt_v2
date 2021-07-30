@@ -216,7 +216,8 @@ if __name__ == '__main__':
     print(f"Phase id: {args.phaseid}")
     print(f"Use forecast: {args.forecast}")
     print(f"Mode of operation: {args.mode}")
-    print(f"Simulation every: {args.delay}")
+    print(f"Simulation every: {args.delay} seconds")
+    print(f"Updating forecast every: {60} seconds")
     print("*" * 70)
 
     forecast_module_mqtt = ForecastMQTT(id_sensor=args.sensorid,
@@ -243,7 +244,7 @@ if __name__ == '__main__':
         forecast_module_mqtt.reset_time_counter()
 
     else:  # Real operation: This should be an infinite loop. Now truncated to test. Uses icarus Forecast.
-        delay = 60 * 15  # Every 15 min
+        delay = 60  # Every 1 min
         print(f"SMA enabled. Real deal control!!! -- Sending forecast every: {delay} seconds.")
         while True:
             # while True:

@@ -282,6 +282,8 @@ if __name__ == '__main__':
                         help="Delay time for simulation operation.")
     parser.add_argument('--statusdelay', required=False, type=float, default=5,
                         help="Delay time for reporting the battery parameters/status.")
+    parser.add_argument('--smatest', required=False, default=True, action='store_false',
+                        help="Test the operation of the inverter via the docker container")
 
     args, unknown = parser.parse_known_args()
 
@@ -300,6 +302,24 @@ if __name__ == '__main__':
                           enable_sma=args.enableinverter,
                           modbus_ip=args.ipmodbus,
                           modbus_port=args.portmodbus)
+
+    if args.smatest:
+        print("Setting the output power of the battery to 2000 [W] for 20 seconds...")
+        battery.set_power_output(2000.0)
+        for ii in range(20):
+            print(f"Second {ii + 1}/20...")
+            time.sleep(1)
+        print("Setting the output power of the battery to -2000 [W] for 20 seconds...")
+        battery.set_power_output(-2000.0)
+        for ii in range(20):
+            print(f"Second {ii + 1}/20...")
+            time.sleep(1)
+        print("Turning off the battery during 10 seconds...")
+        battery.set_power_output(0.0)
+        for ii in range(10):
+            print(f"Second {ii + 1}/10...")
+            time.sleep(1)
+
 
     if args.enableinverter and args.mode == 0:
         print(f"SMA enabled. BUT IN SIMULATION MODE! -- Sim delay: {args.simdelay} seconds")

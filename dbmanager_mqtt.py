@@ -180,6 +180,8 @@ if __name__ == '__main__':
                         help="Username for PostrgreSQL database")
     parser.add_argument('--dbpassword', required=False, type=str, default='postgres',
                         help="Password for PostrgreSQL database")
+    parser.add_argument('--cleardbtable', required=False, default=False, action='store_true',
+                        help="Delete the databases")
     args, unknown = parser.parse_known_args()
 
     user_module_mqtt = DBManagerMQTT(control_id=1,
@@ -192,7 +194,8 @@ if __name__ == '__main__':
                                      username_db=args.dbusername,
                                      password_db=args.dbpassword,
                                      port_db=args.dbport,
-                                     ip_db=args.dbip)
+                                     ip_db=args.dbip,
+                                     clear_table_db=args.cleardbtable)
 
     # while True:
     continue_simulation = True
