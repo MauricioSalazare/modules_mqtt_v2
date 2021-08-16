@@ -176,7 +176,7 @@ if __name__ == '__main__':
                         help="Username for PostrgreSQL database")
     parser.add_argument('--dbport', required=False, type=int, default=5432,
                         help="Username for PostrgreSQL database")
-    parser.add_argument('--dbusername', required=False, type=str, default='postgres',
+    parser.add_argument('--dbusername', required=--False, type=str, default='postgres',
                         help="Username for PostrgreSQL database")
     parser.add_argument('--dbpassword', required=False, type=str, default='postgres',
                         help="Password for PostrgreSQL database")
